@@ -82,20 +82,22 @@ export class HomepageSettingTab extends PluginSettingTab {
 		return normalizePath(value);
 	}
 	
-	async promptForHomepageName(): Promise<string | null> {
+	promptForHomepageName(): string | null {
 		// Use a simple prompt for getting the homepage name
 		const name = prompt("Enter a name for the new homepage:");
 		
-		if (!name) {
+		if (!name || name.trim() === "") {
 			return null;
 		}
 		
-		if (name in this.settings.homepages) {
+		const trimmedName = name.trim();
+		
+		if (trimmedName in this.settings.homepages) {
 			new Notice("A homepage with that name already exists.");
 			return null;
 		}
 		
-		return name.trim();
+		return trimmedName;
 	}
 	
 	getCurrentData(): HomepageData {
@@ -148,12 +150,17 @@ export class HomepageSettingTab extends PluginSettingTab {
 					button
 						.setButtonText("Add homepage")
 						.onClick(async () => {
-							const name = await this.promptForHomepageName();
+							const name = this.promptForHomepageName();
 							if (name) {
-								this.settings.homepages[name] = { ...DEFAULT_DATA };
+								// Initialize new homepage with default data including all weekdays
+								this.settings.homepages[name] = { 
+									...DEFAULT_DATA,
+									weekdays: [0, 1, 2, 3, 4, 5, 6]
+								};
 								this.currentHomepageName = name;
 								await this.plugin.saveSettings();
 								this.display();
+								new Notice(`Created new homepage: ${name}`);
 							}
 						});
 				});
