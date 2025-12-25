@@ -1,6 +1,6 @@
 import { 
 	App, AbstractInputSuggest, ButtonComponent, Command, FuzzySuggestModal, 
-	Menu, Notice, 	Setting, SettingGroup, TAbstractFile, TFile, TFolder, getIcon, setTooltip, 
+	Menu, Notice, 	Setting, TAbstractFile, TFile, TFolder, getIcon, setTooltip, 
 } from "obsidian";
 import { CommandData, Homepage, Kind, Period } from "./homepage";
 import { HomepageSettingTab } from "./settings"; 
@@ -134,7 +134,7 @@ export class CommandBox {
 	activeDrag: HTMLElement | null;
 	activeCommand: CommandData | null;
 
-	constructor(tab: HomepageSettingTab, group: SettingGroup) {
+	constructor(tab: HomepageSettingTab, group: { addSetting: (callback: (setting: Setting) => void) => void }) {
 		this.app = tab.plugin.app;
 		this.homepage = tab.plugin.homepage;
 		this.tab = tab;

@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Setting, SettingGroup, normalizePath } from "obsidian";
+import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Setting, normalizePath } from "obsidian";
 import HomepagePlugin from "./main";
 import { UNCHANGEABLE, HomepageData, Kind, Mode, View } from "./homepage";
 import { PERIODIC_KINDS } from "./periodic";
@@ -372,19 +372,28 @@ export class HomepageSettingTab extends PluginSettingTab {
 	}
 }
 
-class HomepageSettingGroup extends SettingGroup {
+class HomepageSettingGroup {
 	elements: Record<string, Setting> = {};
 	plugin: HomepagePlugin;
 	settings: HomepageSettings;
 	tab: HomepageSettingTab;
+	containerEl: HTMLElement;
 	
 	constructor(tab: HomepageSettingTab, name?: string) {
-		super(tab.containerEl);
-		if (name) this.setHeading(name);
-		
 		this.tab = tab;
 		this.plugin = tab.plugin;
 		this.settings = tab.settings;
+		this.containerEl = tab.containerEl;
+		
+		if (name) {
+			this.containerEl.createEl("h3", { text: name, cls: "setting-item-heading" });
+		}
+	}
+	
+	addSetting(callback: (setting: Setting) => void): HomepageSettingGroup {
+		const setting = new Setting(this.containerEl);
+		callback(setting);
+		return this;
 	}
 	
 	addDropdown(name: string, desc: string, setting: HomepageKey<string>, source: object, callback?: Callback<string>): HomepageSettingGroup {
