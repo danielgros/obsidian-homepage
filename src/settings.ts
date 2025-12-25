@@ -61,6 +61,7 @@ export class HomepageSettingTab extends PluginSettingTab {
 	settings: HomepageSettings;
 	commandBox: CommandBox;
 	currentHomepageName: string;
+	showingAddHomepage: boolean = false;
 
 	constructor(app: App, plugin: HomepagePlugin) {
 		super(app, plugin);
@@ -80,24 +81,6 @@ export class HomepageSettingTab extends PluginSettingTab {
 			return null;
 		}
 		return normalizePath(value);
-	}
-	
-	promptForHomepageName(): string | null {
-		// Use a simple prompt for getting the homepage name
-		const name = prompt("Enter a name for the new homepage:");
-		
-		if (!name || name.trim() === "") {
-			return null;
-		}
-		
-		const trimmedName = name.trim();
-		
-		if (trimmedName in this.settings.homepages) {
-			new Notice("A homepage with that name already exists.");
-			return null;
-		}
-		
-		return trimmedName;
 	}
 	
 	getCurrentData(): HomepageData {
@@ -149,19 +132,9 @@ export class HomepageSettingTab extends PluginSettingTab {
 				setting.addButton(button => {
 					button
 						.setButtonText("Add homepage")
-						.onClick(async () => {
-							const name = this.promptForHomepageName();
-							if (name) {
-								// Initialize new homepage with default data including all weekdays
-								this.settings.homepages[name] = { 
-									...DEFAULT_DATA,
-									weekdays: [0, 1, 2, 3, 4, 5, 6]
-								};
-								this.currentHomepageName = name;
-								await this.plugin.saveSettings();
-								this.display();
-								new Notice(`Created new homepage: ${name}`);
-							}
+						.onClick(() => {
+							this.showingAddHomepage = true;
+							this.display();
 						});
 				});
 				
@@ -180,6 +153,61 @@ export class HomepageSettingTab extends PluginSettingTab {
 					});
 				}
 			});
+		
+		// Show inline input for adding new homepage
+		if (this.showingAddHomepage) {
+			new Setting(this.containerEl)
+				.setName("New homepage name")
+				.setDesc("Enter a unique name for your new homepage configuration")
+				.addText(text => {
+					text
+						.setPlaceholder("e.g., Work Homepage, Weekend Dashboard")
+						.onChange(() => {}); // Placeholder to prevent errors
+					
+					// Focus the input
+					setTimeout(() => text.inputEl.focus(), 50);
+					
+					// Store reference for the buttons
+					const inputEl = text.inputEl;
+					
+					// Add Create button inline
+					const createButton = new ButtonComponent(text.inputEl.parentElement!)
+						.setButtonText("Create")
+						.setCta()
+						.onClick(async () => {
+							const name = inputEl.value.trim();
+							
+							if (!name) {
+								new Notice("Please enter a name for the homepage.");
+								return;
+							}
+							
+							if (name in this.settings.homepages) {
+								new Notice("A homepage with that name already exists.");
+								return;
+							}
+							
+							// Create new homepage with default data
+							this.settings.homepages[name] = { 
+								...DEFAULT_DATA,
+								weekdays: [0, 1, 2, 3, 4, 5, 6]
+							};
+							this.currentHomepageName = name;
+							this.showingAddHomepage = false;
+							await this.plugin.saveSettings();
+							this.display();
+							new Notice(`Created new homepage: ${name}`);
+						});
+					
+					// Add Cancel button inline
+					const cancelButton = new ButtonComponent(text.inputEl.parentElement!)
+						.setButtonText("Cancel")
+						.onClick(() => {
+							this.showingAddHomepage = false;
+							this.display();
+						});
+				});
+		}
 		
 		const mainGroup = new HomepageSettingGroup(this)
 			.addSetting(setting => {
