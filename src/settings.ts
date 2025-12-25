@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Modal, Notice, Platform, PluginSettingTab, Setting, SettingGroup, normalizePath } from "obsidian";
+import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Setting, SettingGroup, normalizePath } from "obsidian";
 import HomepagePlugin from "./main";
 import { UNCHANGEABLE, HomepageData, Kind, Mode, View } from "./homepage";
 import { PERIODIC_KINDS } from "./periodic";
@@ -83,19 +83,19 @@ export class HomepageSettingTab extends PluginSettingTab {
 	}
 	
 	async promptForHomepageName(): Promise<string | null> {
-		return new Promise((resolve) => {
-			const modal = new HomepageNameModal(this.app, (name) => {
-				if (name && !(name in this.settings.homepages)) {
-					resolve(name);
-				} else if (name in this.settings.homepages) {
-					new Notice("A homepage with that name already exists.");
-					resolve(null);
-				} else {
-					resolve(null);
-				}
-			});
-			modal.open();
-		});
+		// Use a simple prompt for getting the homepage name
+		const name = prompt("Enter a name for the new homepage:");
+		
+		if (!name) {
+			return null;
+		}
+		
+		if (name in this.settings.homepages) {
+			new Notice("A homepage with that name already exists.");
+			return null;
+		}
+		
+		return name.trim();
 	}
 	
 	getCurrentData(): HomepageData {
@@ -494,59 +494,5 @@ class HomepageSettingGroup extends SettingGroup {
 		settings.forEach(s => {
 			this.elements[s]?.settingEl.setAttribute("nv-greyed", "");
 		});
-	}
-}
-
-class HomepageNameModal extends Modal {
-	result: string = "";
-	onSubmit: (result: string) => void;
-	
-	constructor(app: App, onSubmit: (result: string) => void) {
-		super(app);
-		this.onSubmit = onSubmit;
-	}
-	
-	onOpen() {
-		const { contentEl } = this;
-		
-		contentEl.createEl("h2", { text: "New homepage name" });
-		
-		new Setting(contentEl)
-			.setName("Name")
-			.addText(text => {
-				text.setPlaceholder("Work Homepage")
-					.onChange(value => {
-						this.result = value;
-					});
-				text.inputEl.addEventListener("keydown", (e) => {
-					if (e.key === "Enter") {
-						e.preventDefault();
-						this.close();
-						this.onSubmit(this.result);
-					}
-				});
-				// Focus the input
-				setTimeout(() => text.inputEl.focus(), 10);
-			});
-		
-		new Setting(contentEl)
-			.addButton(btn => btn
-				.setButtonText("Create")
-				.setCta()
-				.onClick(() => {
-					this.close();
-					this.onSubmit(this.result);
-				}))
-			.addButton(btn => btn
-				.setButtonText("Cancel")
-				.onClick(() => {
-					this.close();
-					this.onSubmit("");
-				}));
-	}
-	
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
 	}
 }
