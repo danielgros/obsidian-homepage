@@ -24,7 +24,8 @@ export interface HomepageData {
 	pin: boolean,
 	commands: CommandData[],
 	alwaysApply: boolean,
-	hideReleaseNotes: boolean
+	hideReleaseNotes: boolean,
+	weekdays?: number[]
 } 
 
 export interface CommandData {

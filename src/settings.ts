@@ -1,8 +1,9 @@
-import { App, ButtonComponent, Notice, Platform, PluginSettingTab, Setting, SettingGroup, normalizePath } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, Platform, PluginSettingTab, Setting, SettingGroup, normalizePath } from "obsidian";
 import HomepagePlugin from "./main";
 import { UNCHANGEABLE, HomepageData, Kind, Mode, View } from "./homepage";
 import { PERIODIC_KINDS } from "./periodic";
 import { SUGGESTORS, CommandBox } from "./ui";
+import { DEFAULT, MOBILE } from "./homepage";
 
 type HomepageKey<T> = { [K in keyof HomepageData]: HomepageData[K] extends T ? K : never }[keyof HomepageData];
 type HomepageObject = { [key: string]: HomepageData }
@@ -15,7 +16,7 @@ export interface HomepageSettings {
 }
 
 export const DEFAULT_SETTINGS: HomepageSettings = {
-	version: 4,
+	version: 5,
 	homepages: {},
 	separateMobile: false
 }
@@ -35,7 +36,8 @@ export const DEFAULT_DATA: HomepageData = {
 	pin: false,
 	commands: [],
 	alwaysApply: false,
-	hideReleaseNotes: false
+	hideReleaseNotes: false,
+	weekdays: [0, 1, 2, 3, 4, 5, 6]
 };
 
 const DESCRIPTIONS = {
@@ -58,11 +60,13 @@ export class HomepageSettingTab extends PluginSettingTab {
 	plugin: HomepagePlugin;
 	settings: HomepageSettings;
 	commandBox: CommandBox;
+	currentHomepageName: string;
 
 	constructor(app: App, plugin: HomepagePlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 		this.settings = plugin.settings;
+		this.currentHomepageName = this.plugin.homepage.name;
 		
 		this.plugin.addCommand({
 			id: "copy-debug-info",
@@ -78,12 +82,97 @@ export class HomepageSettingTab extends PluginSettingTab {
 		return normalizePath(value);
 	}
 	
+	async promptForHomepageName(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const modal = new HomepageNameModal(this.app, (name) => {
+				if (name && !(name in this.settings.homepages)) {
+					resolve(name);
+				} else if (name in this.settings.homepages) {
+					new Notice("A homepage with that name already exists.");
+					resolve(null);
+				} else {
+					resolve(null);
+				}
+			});
+			modal.open();
+		});
+	}
+	
+	getCurrentData(): HomepageData {
+		if (!this.settings.homepages[this.currentHomepageName]) {
+			this.settings.homepages[this.currentHomepageName] = { ...DEFAULT_DATA };
+		}
+		return this.settings.homepages[this.currentHomepageName];
+	}
+	
+	async saveCurrentData(): Promise<void> {
+		await this.plugin.saveSettings();
+		// If we're editing the active homepage, update it
+		if (this.currentHomepageName === this.plugin.homepage.name) {
+			this.plugin.homepage.data = this.getCurrentData();
+		}
+	}
+	
 	display(): void {
-		const kind = this.plugin.homepage.data.kind as Kind;
+		const kind = this.plugin.settings.homepages[this.currentHomepageName]?.kind as Kind;
 		let pluginDisabled = false;
 		let suggestor = SUGGESTORS[kind];
 
 		this.containerEl.empty();
+		
+		// Homepage selector
+		const homepageSelector = new HomepageSettingGroup(this)
+			.addSetting(setting => {
+				setting
+					.setName("Configure homepage")
+					.setDesc("Select which homepage configuration to edit. You can create multiple homepages with different weekday schedules.");
+				
+				setting.addDropdown(dropdown => {
+					// Add existing homepages (excluding Mobile if not currently on mobile)
+					for (const name of Object.keys(this.settings.homepages)) {
+						if (name === MOBILE && (!this.settings.separateMobile || !Platform.isMobile)) {
+							continue;
+						}
+						dropdown.addOption(name, name);
+					}
+					
+					dropdown.setValue(this.currentHomepageName);
+					dropdown.onChange(async (value) => {
+						this.currentHomepageName = value;
+						this.display();
+					});
+				});
+				
+				// Add button to create new homepage
+				setting.addButton(button => {
+					button
+						.setButtonText("Add homepage")
+						.onClick(async () => {
+							const name = await this.promptForHomepageName();
+							if (name) {
+								this.settings.homepages[name] = { ...DEFAULT_DATA };
+								this.currentHomepageName = name;
+								await this.plugin.saveSettings();
+								this.display();
+							}
+						});
+				});
+				
+				// Add button to delete current homepage (except DEFAULT and MOBILE)
+				if (this.currentHomepageName !== DEFAULT && this.currentHomepageName !== MOBILE) {
+					setting.addButton(button => {
+						button
+							.setButtonText("Delete")
+							.setWarning()
+							.onClick(async () => {
+								delete this.settings.homepages[this.currentHomepageName];
+								this.currentHomepageName = DEFAULT;
+								await this.plugin.saveSettings();
+								this.display();
+							});
+					});
+				}
+			});
 		
 		const mainGroup = new HomepageSettingGroup(this)
 			.addSetting(setting => {
@@ -92,7 +181,7 @@ export class HomepageSettingTab extends PluginSettingTab {
 				.addDropdown(async dropdown => {
 					for (const key of Object.values(Kind)) {
 						if (!this.plugin.hasRequiredPlugin(key)) {
-							if (key == this.plugin.homepage.data.kind) pluginDisabled = true;
+							if (key == this.getCurrentData().kind) pluginDisabled = true;
 							else {
 								dropdown.selectEl.createEl(
 									"option", { text: key, attr: { disabled: true } }
@@ -103,12 +192,12 @@ export class HomepageSettingTab extends PluginSettingTab {
 						
 						dropdown.addOption(key, key);
 					}
-					dropdown.setValue(this.plugin.homepage.data.kind);
+					dropdown.setValue(this.getCurrentData().kind);
 					dropdown.onChange(async option => {
-						this.plugin.homepage.data.kind = option;
-						if (option == Kind.Random) this.plugin.homepage.data.value = "";
+						this.getCurrentData().kind = option;
+						if (option == Kind.Random) this.getCurrentData().value = "";
 						
-						await this.plugin.homepage.save();
+						await this.saveCurrentData();
 						this.display();
 					});
 				});
@@ -136,10 +225,10 @@ export class HomepageSettingTab extends PluginSettingTab {
 					setting.addText(text => {
 						new suggestor!(this.app, text.inputEl);
 						text.setPlaceholder(DEFAULT_DATA.value)
-							text.setValue(DEFAULT_DATA.value == this.plugin.homepage.data.value ? "" : this.plugin.homepage.data.value)
+							text.setValue(DEFAULT_DATA.value == this.getCurrentData().value ? "" : this.getCurrentData().value)
 							text.onChange(async (value) => {
-								this.plugin.homepage.data.value = this.sanitiseNote(value) || DEFAULT_DATA.value;
-								await this.plugin.homepage.save();
+								this.getCurrentData().value = this.sanitiseNote(value) || DEFAULT_DATA.value;
+								await this.saveCurrentData();
 							});
 					});
 				}
@@ -159,6 +248,7 @@ export class HomepageSettingTab extends PluginSettingTab {
 				"Use when opening normally", "Use homepage settings when opening it normally, such as from a link or the file browser.",
 				"alwaysApply"
 			)
+			.addWeekdaySelector()
 			.addSetting(setting => {
 				setting
 				.setName("Separate mobile homepage")
@@ -254,7 +344,7 @@ export class HomepageSettingTab extends PluginSettingTab {
 			openingGroup.disableAll();
 		}
 		
-		if (!this.plugin.homepage.data.openOnStartup) {
+		if (!this.getCurrentData().openOnStartup) {
 			vaultGroup.disableSettings("openMode");
 		}
 		
@@ -286,11 +376,13 @@ class HomepageSettingGroup extends SettingGroup {
 	elements: Record<string, Setting> = {};
 	plugin: HomepagePlugin;
 	settings: HomepageSettings;
+	tab: HomepageSettingTab;
 	
 	constructor(tab: HomepageSettingTab, name?: string) {
 		super(tab.containerEl);
 		if (name) this.setHeading(name);
 		
+		this.tab = tab;
 		this.plugin = tab.plugin;
 		this.settings = tab.settings;
 	}
@@ -304,15 +396,18 @@ class HomepageSettingGroup extends SettingGroup {
 				for (const key of Object.values(source)) {
 					dropdown.addOption(key, key);
 				}
-				dropdown.setValue(this.plugin.homepage.data[setting]);
+				const currentData: any = this.tab.getCurrentData();
+				const settingKey = setting as string;
+				dropdown.setValue(currentData[settingKey]);
 				dropdown.onChange(async option => {
-					this.plugin.homepage.data[setting] = option;
-					await this.plugin.homepage.save();
+					const data: any = this.tab.getCurrentData();
+					data[settingKey] = option;
+					await this.tab.saveCurrentData();
 					if (callback) callback(option);
 				});
 			});
 			
-			this.elements[setting] = s;
+			this.elements[setting as string] = s;
 		});
 		
 		return this;
@@ -322,16 +417,70 @@ class HomepageSettingGroup extends SettingGroup {
 		this.addSetting(setting => {
 			setting
 			.setName(name).setDesc(desc)
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.homepage.data[key])
-				.onChange(async value => {
-					this.plugin.homepage.data[key] = value; 
-					await this.plugin.homepage.save();
+			.addToggle(toggle => {
+				const currentData: any = this.tab.getCurrentData();
+				const keyStr = key as string;
+				toggle.setValue(currentData[keyStr]);
+				toggle.onChange(async value => {
+					const data: any = this.tab.getCurrentData();
+					data[keyStr] = value; 
+					await this.tab.saveCurrentData();
 					if (callback) callback(value);
-				})
-			);
+				});
+			});
 		
-			this.elements[key] = setting;
+			this.elements[key as string] = setting;
+		});
+		
+		return this;
+	}
+	
+	addWeekdaySelector(): HomepageSettingGroup {
+		const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+		
+		this.addSetting(setting => {
+			setting.setName("Active weekdays")
+				.setDesc("Select which days of the week this homepage should be active. If not all days are selected, you can add additional homepages for the remaining days.");
+			
+			const container = setting.controlEl.createDiv({ cls: "nv-weekday-container" });
+			
+			// Ensure weekdays array exists
+			if (!this.tab.getCurrentData().weekdays) {
+				this.tab.getCurrentData().weekdays = [0, 1, 2, 3, 4, 5, 6];
+			}
+			
+			weekdayNames.forEach((day, index) => {
+				const button = container.createEl("button", {
+					text: day,
+					cls: "nv-weekday-button"
+				});
+				
+				// Set initial state
+				if (this.tab.getCurrentData().weekdays!.includes(index)) {
+					button.addClass("nv-weekday-active");
+				}
+				
+				button.addEventListener("click", async (e) => {
+					e.preventDefault();
+					const weekdays = this.tab.getCurrentData().weekdays!;
+					const dayIndex = weekdays.indexOf(index);
+					
+					if (dayIndex > -1) {
+						// Remove day
+						weekdays.splice(dayIndex, 1);
+						button.removeClass("nv-weekday-active");
+					} else {
+						// Add day
+						weekdays.push(index);
+						weekdays.sort((a, b) => a - b);
+						button.addClass("nv-weekday-active");
+					}
+					
+					await this.tab.saveCurrentData();
+				});
+			});
+			
+			this.elements["weekdays"] = setting;
 		});
 		
 		return this;
@@ -345,5 +494,59 @@ class HomepageSettingGroup extends SettingGroup {
 		settings.forEach(s => {
 			this.elements[s]?.settingEl.setAttribute("nv-greyed", "");
 		});
+	}
+}
+
+class HomepageNameModal extends Modal {
+	result: string = "";
+	onSubmit: (result: string) => void;
+	
+	constructor(app: App, onSubmit: (result: string) => void) {
+		super(app);
+		this.onSubmit = onSubmit;
+	}
+	
+	onOpen() {
+		const { contentEl } = this;
+		
+		contentEl.createEl("h2", { text: "New homepage name" });
+		
+		new Setting(contentEl)
+			.setName("Name")
+			.addText(text => {
+				text.setPlaceholder("Work Homepage")
+					.onChange(value => {
+						this.result = value;
+					});
+				text.inputEl.addEventListener("keydown", (e) => {
+					if (e.key === "Enter") {
+						e.preventDefault();
+						this.close();
+						this.onSubmit(this.result);
+					}
+				});
+				// Focus the input
+				setTimeout(() => text.inputEl.focus(), 10);
+			});
+		
+		new Setting(contentEl)
+			.addButton(btn => btn
+				.setButtonText("Create")
+				.setCta()
+				.onClick(() => {
+					this.close();
+					this.onSubmit(this.result);
+				}))
+			.addButton(btn => btn
+				.setButtonText("Cancel")
+				.onClick(() => {
+					this.close();
+					this.onSubmit("");
+				}));
+	}
+	
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
 	}
 }

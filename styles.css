@@ -229,3 +229,38 @@
 	height: 100%;
 	margin: 0 !important;
 }
+
+.nv-weekday-container {
+	display: flex;
+	gap: var(--size-2-2);
+	flex-wrap: wrap;
+}
+
+.nv-weekday-button {
+	padding: var(--size-2-2) var(--size-4-2);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-border);
+	color: var(--text-muted);
+	border: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	transition: all 0.2s;
+	min-width: 45px;
+	text-align: center;
+}
+
+.nv-weekday-button:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.nv-weekday-button.nv-weekday-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.nv-weekday-button.nv-weekday-active:hover {
+	background-color: var(--interactive-accent-hover);
+	border-color: var(--interactive-accent-hover);
+}

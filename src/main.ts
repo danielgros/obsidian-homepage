@@ -77,6 +77,8 @@ export default class HomepagePlugin extends Plugin {
 	}
 	
 	getHomepage(): Homepage {
+		const today = new Date().getDay(); // 0 = Sunday, 6 = Saturday
+		
 		if (this.settings.separateMobile && Platform.isMobile) {
 			if (!(MOBILE in this.settings.homepages)) {
 				this.settings.homepages[MOBILE] = { ...this.settings.homepages?.[DEFAULT] };
@@ -85,13 +87,26 @@ export default class HomepagePlugin extends Plugin {
 			
 			return new Homepage(MOBILE, this);
 		}
+		
+		// Check all homepages to find one that matches today's weekday
+		for (const [name, data] of Object.entries(this.settings.homepages)) {
+			// Skip mobile homepage
+			if (name === MOBILE) continue;
+			
+			// Check if this homepage is configured for today
+			if (data.weekdays && data.weekdays.includes(today)) {
+				return new Homepage(name, this);
+			}
+		}
+		
+		// Fallback to default homepage
 		return new Homepage(DEFAULT, this);
 	}
 	
 	async loadSettings(): Promise<HomepageSettings> {
 		const settingsData: HomepageSettings = await this.loadData();
 		
-		if (settingsData?.version !== 4) {
+		if (settingsData?.version !== 5) {
 			if (!settingsData) return Object.assign({}, DEFAULT_SETTINGS);
 			
 			return this.upgradeSettings(settingsData);
@@ -199,6 +214,21 @@ export default class HomepagePlugin extends Plugin {
 	}
 	
 	upgradeSettings(data: any): HomepageSettings {
+		if (data.version == 4) {
+			const settings = data as HomepageSettings;
+			
+			// Add weekdays array to all existing homepages
+			for (const homepage of Object.values(settings.homepages)) {
+				if (!homepage.weekdays) {
+					homepage.weekdays = [0, 1, 2, 3, 4, 5, 6];
+				}
+			}
+			
+			settings.version = 5;
+			this.saveData(settings);
+			return settings;
+		}
+		
 		if (data.version == 3) {
 			const settings = data as HomepageSettings;
 			let hasMoment = false;
@@ -212,10 +242,15 @@ export default class HomepagePlugin extends Plugin {
 					hasMoment = true;
 					homepage.kind = Kind.DailyNote;
 				}
+				
+				// Add weekdays array
+				if (!homepage.weekdays) {
+					homepage.weekdays = [0, 1, 2, 3, 4, 5, 6];
+				}
 			}
 			
 			if (hasMoment) new Notice(MOMENT_MESSAGE);
-			settings.version = 4;
+			settings.version = 5;
 			
 			this.saveData(settings);
 			return settings;
@@ -237,6 +272,7 @@ export default class HomepagePlugin extends Plugin {
 		}
 		
 		data.commands = [];
+		data.weekdays = [0, 1, 2, 3, 4, 5, 6];
 		
 		delete data.workspace;
 		delete data.momentFormat;
