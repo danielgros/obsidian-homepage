@@ -31,6 +31,15 @@ export default class HomepagePlugin extends Plugin {
 		
 		this.patchOpeningBehaviour();
 
+		// Handle opening on startup using onLayoutReady
+		this.app.workspace.onLayoutReady(async () => {
+			if (this.homepage.data.openOnStartup && !(await this.hasUrlParams())) {
+				await this.homepage.open();
+			}
+			this.loaded = true;
+			this.unpatchReleaseNotes();
+		});
+
 		addIcon("homepage", ICON);
 		this.addRibbonIcon(
 			"homepage", 
@@ -195,18 +204,17 @@ export default class HomepagePlugin extends Plugin {
 	patchOpeningBehaviour(): void {
 		this.app.nvOrig_runOpeningBehavior = this.app.runOpeningBehavior;
 		this.app.runOpeningBehavior = async (path: string) => {
-			const openInitially = (
+			// Only prevent default behavior if we plan to open homepage on startup
+			const shouldOpenHomepage = (
 				this.homepage.data.openOnStartup && !(await this.hasUrlParams())
 			);
 			
 			this.patchNewTabPage();
 					
-			if (openInitially) await this.homepage.open();
-			else this.app.nvOrig_runOpeningBehavior(path);
-			
-			this.loaded = true;
-			
-			this.unpatchReleaseNotes();
+			if (!shouldOpenHomepage) {
+				this.app.nvOrig_runOpeningBehavior(path);
+			}
+			// If shouldOpenHomepage is true, we don't call the original - the onLayoutReady callback will handle it
 		};
 	}
 	
