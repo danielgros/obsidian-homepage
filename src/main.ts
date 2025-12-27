@@ -23,12 +23,13 @@ export default class HomepagePlugin extends Plugin {
 	
 	async onload(): Promise<void> {
 		this.patchReleaseNotes();
-		this.patchOpeningBehaviour();
 		
 		this.settings = await this.loadSettings();
 		this.internalPlugins = this.app.internalPlugins.plugins;
 		this.communityPlugins = this.app.plugins.plugins;
 		this.homepage = this.getHomepage();
+		
+		this.patchOpeningBehaviour();
 
 		addIcon("homepage", ICON);
 		this.addRibbonIcon(
